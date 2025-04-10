@@ -55,16 +55,12 @@ search_mode = st.tabs([
 
 with search_mode[0]:
     # Existing search by location and domain
-    col1, col2, col3, col4 = st.columns(4)
-    with col1:
-        location = st.text_input("📍 Location", "Ahmedabad")
-    with col2:
-        domain = st.text_input("💼 Domain", "IT OR Software")
-    with col3:
-        designation = st.text_input("👤 Designation", "HR OR Recruiter")
-    # In the first tab (Search by Location & Domain)
-    with col4:
-        num_companies = st.number_input("🏢 Number of Companies", min_value=1, max_value=50, value=10, key="location_search_num")
+    location = st.text_input("📍 Location", "Ahmedabad")
+    domain = st.text_input("💼 Domain", "IT OR Software")
+    designation = st.text_input("👤 Designation", "HR OR Recruiter")
+    country = st.text_input("🌍 Country", "India")
+    state = st.text_input("🏙️ State", "Gujarat")
+    num_companies = st.number_input("🏢 Number of Companies", min_value=1, max_value=50, value=10, key="location_search_num")
     
     if st.button("Search Companies"):
         with st.spinner("🔍 Searching for LinkedIn company links..."):
@@ -125,7 +121,7 @@ with search_mode[0]:
                 progress_bar = st.progress(0)
                 
                 for idx, company in enumerate(selected_companies):
-                    profiles = get_hr_profiles(company, profiles_per_company, st.session_state.designation)
+                    profiles = get_hr_profiles(company, profiles_per_company, st.session_state.designation, country, state)
                     all_profiles[company] = profiles
                     progress_bar.progress((idx + 1) / len(selected_companies))
                 
@@ -167,12 +163,17 @@ with search_mode[1]:
     # Direct company search
     company_name = st.text_input("🏢 Enter Company Name")
     direct_designation = st.text_input("👤 Designation", "HR OR Recruiter", key="direct_designation")
+    col1, col2 = st.columns(2)
+    with col1:
+        country = st.text_input("🌍 Country", "India", key="direct_country")
+    with col2:
+        state = st.text_input("🏙️ State", "Gujarat", key="direct_state")
     num_profiles = st.number_input("👥 Number of Profiles", min_value=1, max_value=30, value=10, key="direct_search_num")
     
     if st.button("Find Profiles", key='direct_search'):
         if company_name:
             with st.spinner(f"🔍 Searching for {direct_designation} profiles..."):
-                st.session_state.profiles = get_hr_profiles(company_name, num_profiles, designation=direct_designation)
+                st.session_state.profiles = get_hr_profiles(company_name, num_profiles, designation=direct_designation, country=country, state=state)
                 
             # In direct search:
             if st.session_state.profiles:
@@ -246,10 +247,14 @@ with search_mode[2]:
     # File upload
     uploaded_file = st.file_uploader("📄 Upload CSV file with company names", type="csv")
     
-    col1, col2 = st.columns(2)
+    col1, col2, col3, col4 = st.columns(4)
     with col1:
         batch_designation = st.text_input("👥 Designation", "HR OR Recruiter", key="batch_designation")
     with col2:
+        country = st.text_input("🌍 Country", "India", key="batch_country")
+    with col3:
+        state = st.text_input("🏙️ State", "Gujarat", key="batch_state")
+    with col4:
         profiles_per_company = st.number_input("🎯 Profiles per Company", min_value=1, max_value=30, value=5)
     
     if uploaded_file and st.button("Process Companies", key="batch_process"):
@@ -264,7 +269,7 @@ with search_mode[2]:
         all_results = {}
         for idx, company in enumerate(company_list):
             status_text.text(f"Processing {company}...")
-            profiles = get_hr_profiles(company, profiles_per_company, batch_designation)
+            profiles = get_hr_profiles(company, profiles_per_company, batch_designation, country, state)
             all_results[company] = profiles
             progress_bar.progress((idx + 1) / len(company_list))
         

@@ -10,8 +10,25 @@ def process_result(result, profile_links):
         profile_links.append(href)
         print(f"✔️ Found LinkedIn profile: {href}")
 
-def get_hr_profiles(company_name, num_profiles, designation="HR OR Recruiter"):
-    search_query = f'site:linkedin.com/in "{company_name}" ({designation})'
+def get_hr_profiles(company_name, num_profiles, designation="HR OR Recruiter", country="India", state="Gujarat"):
+    """
+    Search for HR profiles on LinkedIn
+    Args:
+        company_name: Name of the company to search for
+        num_profiles: Number of profiles to retrieve
+        designation: Job title to search for (default: "HR OR Recruiter")
+        country: Country to filter by (optional)
+        state: State/region to filter by (optional)
+    """
+    location_filter = ""
+    if country and state:
+        location_filter = f" AND ({country} AND {state})"
+    elif country:
+        location_filter = f" AND {country}"
+    elif state:
+        location_filter = f" AND {state}"
+        
+    search_query = f'site:linkedin.com/in "{company_name}" ({designation}){location_filter}'
     search_url = f"https://www.bing.com/search?q={quote(search_query)}&first=1"
     
     chrome_options = Options()
@@ -58,13 +75,13 @@ def get_hr_profiles(company_name, num_profiles, designation="HR OR Recruiter"):
             driver.quit()
         return []
 
-def batch_process_companies(companies_list, num_profiles, designation="HR OR Recruiter"):
+def batch_process_companies(companies_list, num_profiles, designation="HR OR Recruiter", country=None, state=None):
     """Process multiple companies and get HR profile links"""
     all_results = {}
     
     for company in companies_list:
         print(f"\n📦 Processing company: {company}")
-        all_results[company] = get_hr_profiles(company, num_profiles, designation)
+        all_results[company] = get_hr_profiles(company, num_profiles, designation, country, state)
     
     return all_results
 
