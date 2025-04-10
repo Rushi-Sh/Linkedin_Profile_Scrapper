@@ -4,10 +4,15 @@ from selenium.webdriver.chrome.options import Options
 from urllib.parse import quote
 import time
 
+def process_result(result, profile_links):
+    href = result.get_attribute("href")
+    if href and "linkedin.com/in/" in href and href not in profile_links:
+        profile_links.append(href)
+        print(f"✔️ Found LinkedIn profile: {href}")
+
 def get_hr_profiles(company_name, num_profiles, designation="HR OR Recruiter"):
-    # Use the designation parameter in the search query
     search_query = f'site:linkedin.com/in "{company_name}" ({designation})'
-    search_url = f"https://www.bing.com/search?q={quote(search_query)}"
+    search_url = f"https://www.bing.com/search?q={quote(search_query)}&first=1"
     
     chrome_options = Options()
     chrome_options.add_argument('--headless')
@@ -20,21 +25,28 @@ def get_hr_profiles(company_name, num_profiles, designation="HR OR Recruiter"):
     
     try:
         driver = webdriver.Chrome(options=chrome_options)
-        driver.get(search_url)
-        print(f"Searching URL: {search_url}")
         
-        time.sleep(3)  # Let page fully load
+        while len(profile_links) < num_profiles:
+            driver.get(search_url)
+            print(f"🔍 Searching: {search_url}")
+            
+            time.sleep(2)
 
-        # Bing selector for search result links
-        results = driver.find_elements(By.CSS_SELECTOR, 'li.b_algo h2 a')
-        print(f"Found {len(results)} search results.")
+            results = driver.find_elements(By.CSS_SELECTOR, 'li.b_algo h2 a')
+            print(f"🔗 Total search results found: {len(results)}")
 
-        for result in results:
-            href = result.get_attribute("href")
-            if href and "linkedin.com/in/" in href and href not in profile_links:
-                profile_links.append(href)
-                print(f"✔️ Found LinkedIn profile: {href}")
+            for result in results:
                 if len(profile_links) >= num_profiles:
+                    break
+                process_result(result, profile_links)
+            
+            # Check if we need more results and can paginate
+            if len(profile_links) < num_profiles:
+                try:
+                    next_page = driver.find_element(By.CSS_SELECTOR, 'a.sb_pagN')
+                    search_url = next_page.get_attribute('href')
+                except:
+                    print("⚠️ No more pages available")
                     break
 
         driver.quit()
@@ -47,17 +59,29 @@ def get_hr_profiles(company_name, num_profiles, designation="HR OR Recruiter"):
         return []
 
 def batch_process_companies(companies_list, num_profiles, designation="HR OR Recruiter"):
-    """Process multiple companies and return their profiles"""
+    """Process multiple companies and get HR profile links"""
     all_results = {}
+    
     for company in companies_list:
-        profiles = get_hr_profiles(company, num_profiles, designation)
-        all_results[company] = profiles
+        print(f"\n📦 Processing company: {company}")
+        all_results[company] = get_hr_profiles(company, num_profiles, designation)
+    
     return all_results
 
 # Optional test run
 if __name__ == "__main__":
+    import time
+
+    start_time = time.time()
+
     test_company = "Sapphire Software Solutions"
-    links = get_hr_profiles(test_company, num_profiles=5)
-    print("\nLinkedIn HR Profiles:")
+    links = get_hr_profiles(test_company, num_profiles=20)
+
+    end_time = time.time()
+    duration = end_time - start_time
+
+    print("\n📄 LinkedIn HR Profiles:")
     for link in links:
         print(link)
+
+    print(f"\n⏱️ Total Execution Time: {duration:.2f} seconds")
