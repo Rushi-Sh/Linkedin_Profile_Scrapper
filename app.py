@@ -5,12 +5,13 @@ import csv
 from datetime import datetime
 import os
 import pandas as pd
-from io import StringIO  # Add this import
+from io import StringIO  
 import io
 
 from companies_details_extraction.company_scraper import get_linkedin_company_links, extract_company_name_from_url
 from companies_details_extraction.hr_scraper import get_hr_profiles
 from companies_details_extraction.company_insights import get_company_insights
+from companies_details_extraction.email_predictor import extract_company_domain, predict_emails_from_profiles
 
 # After imports and before session state initialization
 def update_analytics(search_type, company, num_results):
@@ -156,6 +157,67 @@ with search_mode[0]:
                             file_name=f"hr_profiles_{datetime.now().strftime('%Y%m%d_%H%M%S')}.csv",
                             mime="text/csv"
                         )
+                        
+                        # Add email prediction section
+                        st.markdown("### 📧 Predict Email Formats")
+                        for company in selected_companies:
+                            company_url = st.session_state.companies.get(company, "")
+                            company_domain = extract_company_domain(company_url)
+                            
+                            if company_domain:
+                                with st.expander(f"📧 Email Predictions for {company}"):
+                                    email_df = predict_emails_from_profiles(
+                                        all_profiles[company],
+                                        company_domain
+                                    )
+                                    
+                                    if not email_df.empty:
+                                        st.dataframe(
+                                            email_df,
+                                            column_config={
+                                                "Profile URL": st.column_config.LinkColumn("Profile URL", width="large"),
+                                                "Predicted Email": st.column_config.TextColumn("Predicted Email", width="medium"),
+                                                "Company Domain": st.column_config.TextColumn("Company Domain", width="medium")
+                                            },
+                                            hide_index=True,
+                                            height=200
+                                        )
+                                        
+                                        # Download button for email predictions
+                                        email_csv_buffer = StringIO()
+                                        email_df.to_csv(email_csv_buffer, index=False)
+                                        st.download_button(
+                                            label="📥 Download Email Predictions",
+                                            data=email_csv_buffer.getvalue(),
+                                            file_name=f"email_predictions_{company}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.csv",
+                                            mime="text/csv"
+                                        )
+                                        
+                                        # Manual domain input
+                                        manual_domain = st.text_input(
+                                            "🔤 Enter company domain manually",
+                                            value=company_domain,
+                                            key=f"manual_domain_{company}"
+                                        )
+                                        
+                                        if manual_domain != company_domain and st.button("Update Predictions", key=f"update_{company}"):
+                                            email_df = predict_emails_from_profiles(
+                                                all_profiles[company],
+                                                manual_domain
+                                            )
+                                            if not email_df.empty:
+                                                st.dataframe(
+                                                    email_df,
+                                                    column_config={
+                                                        "Profile URL": st.column_config.LinkColumn("Profile URL", width="large"),
+                                                        "Predicted Email": st.column_config.TextColumn("Predicted Email", width="medium"),
+                                                        "Company Domain": st.column_config.TextColumn("Company Domain", width="medium")
+                                                    },
+                                                    hide_index=True,
+                                                    height=200
+                                                )
+                            else:
+                                st.warning(f"Could not determine domain for {company}")
                     else:
                         st.warning("No HR profiles found for the selected companies.")
 
@@ -207,6 +269,107 @@ with search_mode[1]:
                     file_name=f"hr_profiles_{company_name_clean}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.csv",
                     mime="text/csv"
                 )
+                
+                # Enhanced email prediction section
+                st.markdown("### 📧 Predict Email Formats")
+                
+                if st.session_state.profiles:
+                    company_url = st.session_state.companies.get(company_name, "") if hasattr(st.session_state, 'companies') else ""
+                    company_domain = extract_company_domain(company_url) if company_url else ""
+                    
+                    with st.expander("📧 Email Predictions", expanded=True):
+                        if company_domain:
+                            with st.spinner("🔮 Predicting email formats..."):
+                                email_df = predict_emails_from_profiles(
+                                    st.session_state.profiles, 
+                                    company_domain
+                                )
+                            
+                            if not email_df.empty:
+                                st.success(f"✨ Predicted {len(email_df)} email formats")
+                                
+                                st.dataframe(
+                                    email_df,
+                                    column_config={
+                                        "Profile URL": st.column_config.LinkColumn("Profile URL", width="large"),
+                                        "Predicted Email": st.column_config.TextColumn("Predicted Email", width="medium"),
+                                        "Company Domain": st.column_config.TextColumn("Company Domain", width="medium")
+                                    },
+                                    hide_index=True,
+                                    height=300
+                                )
+                                
+                                # Download button for email predictions
+                                email_csv_buffer = io.StringIO()
+                                email_df.to_csv(email_csv_buffer, index=False)
+                                st.download_button(
+                                    label="📥 Download Email Predictions",
+                                    data=email_csv_buffer.getvalue(),
+                                    file_name=f"email_predictions_{company_name_clean}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.csv",
+                                    mime="text/csv"
+                                )
+                                
+                                # Email format patterns info
+                                with st.expander("ℹ️ Email Format Patterns"):
+                                    st.info("Email formats are predicted based on common patterns:")
+                                    st.markdown("- First letter of first name + last name (jsmith@domain.com)")
+                                    st.markdown("- First name dot last name (john.smith@domain.com)")
+                                    st.markdown("- First name underscore last name (john_smith@domain.com)")
+                                    st.markdown("- First name + first letter of last name (johns@domain.com)")
+                                    st.markdown("- First name only (john@domain.com)")
+                                    st.markdown("- First initial dot last name (j.smith@domain.com)")
+                                
+                                # Manual domain input
+                                st.markdown("### 🔄 Update Domain")
+                                manual_domain = st.text_input(
+                                    "🔤 Enter company domain manually",
+                                    value=company_domain
+                                )
+                                
+                                if manual_domain != company_domain and st.button("Update Predictions"):
+                                    with st.spinner("🔮 Predicting email formats with new domain..."):
+                                        email_df = predict_emails_from_profiles(
+                                            st.session_state.profiles, 
+                                            manual_domain
+                                        )
+                                    if not email_df.empty:
+                                        st.success(f"✨ Updated predictions with new domain")
+                                        st.dataframe(
+                                            email_df,
+                                            column_config={
+                                                "Profile URL": st.column_config.LinkColumn("Profile URL", width="large"),
+                                                "Predicted Email": st.column_config.TextColumn("Predicted Email", width="medium"),
+                                                "Company Domain": st.column_config.TextColumn("Company Domain", width="medium")
+                                            },
+                                            hide_index=True,
+                                            height=300
+                                        )
+                            else:
+                                st.warning("Could not predict email formats for these profiles.")
+                        else:
+                            st.warning("Could not determine company domain for email prediction.")
+                            manual_domain = st.text_input(
+                                "🔤 Enter company domain manually",
+                                placeholder="example.com"
+                            )
+                            if manual_domain and st.button("Generate Predictions"):
+                                with st.spinner("🔮 Predicting email formats..."):
+                                    email_df = predict_emails_from_profiles(
+                                        st.session_state.profiles, 
+                                        manual_domain
+                                    )
+                                if not email_df.empty:
+                                    st.success(f"✨ Generated predictions with provided domain")
+                                    st.dataframe(
+                                        email_df,
+                                        column_config={
+                                            "Profile URL": st.column_config.LinkColumn("Profile URL", width="large"),
+                                            "Predicted Email": st.column_config.TextColumn("Predicted Email", width="medium"),
+                                            "Company Domain": st.column_config.TextColumn("Company Domain", width="medium")
+                                        },
+                                        hide_index=True,
+                                        height=300
+                                    )
             else:
                 st.warning("No HR profiles found.")
         else:
@@ -235,6 +398,9 @@ st.markdown("""
     }
     </style>
 """, unsafe_allow_html=True)
+
+# Import email predictor
+from companies_details_extraction.email_predictor import predict_emails_from_profiles, extract_company_domain
 
 
     
@@ -303,6 +469,63 @@ with search_mode[2]:
             file_name=f"batch_results_{datetime.now().strftime('%Y%m%d_%H%M%S')}.csv",
             mime="text/csv"
         )
+        
+        # Email Predictions Section
+        st.markdown("### 📧 Email Predictions")
+        for company in all_results.keys():
+            with st.expander(f"📧 Email Predictions for {company}"):
+                # Try to determine company domain
+                company_domain = f"{company.lower().replace(' ', '')}.com"
+                
+                # Manual domain input
+                manual_domain = st.text_input(
+                    "🔤 Enter company domain",
+                    value=company_domain,
+                    key=f"batch_domain_{company}"
+                )
+                
+                if st.button("Generate Predictions", key=f"batch_predict_{company}"):
+                    with st.spinner("🔮 Predicting email formats..."):
+                        email_df = predict_emails_from_profiles(
+                            all_results[company],
+                            manual_domain
+                        )
+                    
+                    if not email_df.empty:
+                        st.success(f"✨ Generated predictions for {company}")
+                        st.dataframe(
+                            email_df,
+                            column_config={
+                                "Profile URL": st.column_config.LinkColumn("Profile URL", width="large"),
+                                "Predicted Email": st.column_config.TextColumn("Predicted Email", width="medium"),
+                                "Company Domain": st.column_config.TextColumn("Company Domain", width="medium")
+                            },
+                            hide_index=True,
+                            height=200
+                        )
+                        
+                        # Download button for email predictions
+                        email_csv_buffer = StringIO()
+                        email_df.to_csv(email_csv_buffer, index=False)
+                        st.download_button(
+                            label="📥 Download Email Predictions",
+                            data=email_csv_buffer.getvalue(),
+                            file_name=f"batch_email_predictions_{company}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.csv",
+                            mime="text/csv",
+                            key=f"batch_download_{company}"
+                        )
+                    else:
+                        st.warning("Could not generate email predictions for this company.")
+                
+                # Show email format patterns
+                with st.expander("ℹ️ Email Format Patterns"):
+                    st.info("Email formats are predicted based on common patterns:")
+                    st.markdown("- First letter of first name + last name (jsmith@domain.com)")
+                    st.markdown("- First name dot last name (john.smith@domain.com)")
+                    st.markdown("- First name underscore last name (john_smith@domain.com)")
+                    st.markdown("- First name + first letter of last name (johns@domain.com)")
+                    st.markdown("- First name only (john@domain.com)")
+                    st.markdown("- First initial dot last name (j.smith@domain.com)")
         
     # Show sample CSV format
     st.markdown("""
