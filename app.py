@@ -5,10 +5,25 @@ import csv
 from datetime import datetime
 import os
 import pandas as pd
-import io
+from io import StringIO  # Add this import
 
 from companies_details_extraction.company_scraper import get_linkedin_company_links, extract_company_name_from_url
 from companies_details_extraction.hr_scraper import get_hr_profiles
+from companies_details_extraction.company_insights import get_company_insights
+
+# After imports and before session state initialization
+def update_analytics(search_type, company, num_results):
+    """Update analytics data in session state"""
+    st.session_state.analytics_data['searches'].append({
+        'date': datetime.now().date(),
+        'type': search_type,
+        'company': company
+    })
+    st.session_state.analytics_data['results'].append({
+        'company': company,
+        'num_results': num_results,
+        'date': datetime.now().date()
+    })
 
 # Initialize session state
 if 'companies' not in st.session_state:
@@ -17,27 +32,17 @@ if 'selected_company' not in st.session_state:
     st.session_state.selected_company = None
 if 'profiles' not in st.session_state:
     st.session_state.profiles = None
-
-st.set_page_config(page_title="LinkedIn HR Scraper", layout="centered")
-st.title("👥 LinkedIn HR Profile Scraper")
-
-# Add to imports
-from io import StringIO
-
-# Add new tab for batch processing
-search_mode = st.tabs(["🔍 Search by Location & Domain", "🎯 Direct Company Search", "📦 Batch Processing"])
-
-# Add designation to session state
 if 'designation' not in st.session_state:
     st.session_state.designation = None
-
-# Add to session state initialization
 if 'search_templates' not in st.session_state:
     st.session_state.search_templates = {}
 if 'analytics_data' not in st.session_state:
     st.session_state.analytics_data = {'searches': [], 'results': []}
 
-# Update tabs
+st.set_page_config(page_title="LinkedIn HR Scraper", layout="centered")
+st.title("👥 LinkedIn HR Profile Scraper")
+
+# Single tab navigation
 search_mode = st.tabs([
     "🔍 Search by Location & Domain", 
     "🎯 Direct Company Search", 
@@ -49,14 +54,17 @@ search_mode = st.tabs([
 
 with search_mode[0]:
     # Existing search by location and domain
-    col1, col2, col3 = st.columns(3)
+    col1, col2, col3, col4 = st.columns(4)
     with col1:
         location = st.text_input("📍 Location", "Ahmedabad")
     with col2:
         domain = st.text_input("💼 Domain", "IT OR Software")
     with col3:
-        num_companies = st.number_input("🏢 Number of Companies", min_value=1, max_value=50, value=10)
-
+        designation = st.text_input("👤 Designation", "HR OR Recruiter")
+    # In the first tab (Search by Location & Domain)
+    with col4:
+        num_companies = st.number_input("🏢 Number of Companies", min_value=1, max_value=50, value=10, key="location_search_num")
+    
     if st.button("Search Companies"):
         with st.spinner("🔍 Searching for LinkedIn company links..."):
             company_links = get_linkedin_company_links(location, domain, num_companies)
@@ -65,12 +73,9 @@ with search_mode[0]:
 
 with search_mode[1]:
     # Direct company search
-    col1, col2 = st.columns(2)
-    with col1:
-        company_name = st.text_input("🏢 Enter Company Name")
-    with col2:
-        direct_designation = st.text_input("👤 Designation", "HR OR Recruiter", key="direct_designation")
-    num_profiles = st.number_input("👥 Number of Profiles", min_value=1, max_value=30, value=10)
+    company_name = st.text_input("🏢 Enter Company Name")
+    direct_designation = st.text_input("👤 Designation", "HR OR Recruiter", key="direct_designation")
+    num_profiles = st.number_input("👥 Number of Profiles", min_value=1, max_value=30, value=10, key="direct_search_num")
     
     if st.button("Find Profiles", key='direct_search'):
         if company_name:
@@ -158,81 +163,12 @@ if st.session_state.companies:
             "LinkedIn URL": st.column_config.LinkColumn("LinkedIn URL", width="large")
         },
         hide_index=True,
-        height=300  # Fixed height for scrollable view
+        height=300
     )
     
-    # Single download button for companies CSV
-    companies_df = pd.DataFrame(
-        [[name, url] for name, url in st.session_state.companies.items()],
-        columns=['Company Name', 'LinkedIn URL']
-    )
-    csv_buffer = io.StringIO()
-    companies_df.to_csv(csv_buffer, index=False)
-    
-    st.download_button(
-        label="📥 Download Companies as CSV",
-        data=csv_buffer.getvalue(),
-        file_name=f"companies_{datetime.now().strftime('%Y%m%d_%H%M%S')}.csv",
-        mime="text/csv"
-    )
+   
 
-    st.session_state.selected_company = st.selectbox(
-        "🏢 Select a Company", 
-        list(st.session_state.companies.keys()),
-        key='company_select'
-    )
-    
-    if st.session_state.selected_company:
-        num_profiles = st.number_input("👥 Number of Profiles", min_value=1, max_value=30, value=10)
-        search_profiles = st.button("Find Profiles", key='search_profiles')
-        
-        if search_profiles:
-            with st.spinner(f"🔍 Searching for {st.session_state.designation} profiles..."):
-                st.session_state.profiles = get_hr_profiles(
-                    st.session_state.selected_company, 
-                    num_profiles,
-                    designation=st.session_state.designation
-                )
-            if st.session_state.profiles:
-                st.success(f"✨ Found {len(st.session_state.profiles)} HR/Recruiter profiles")
-                
-                # Display HR profiles as DataFrame
-                st.subheader("👥 HR Profiles")
-                profiles_df = pd.DataFrame(
-                    [[st.session_state.selected_company, profile] for profile in st.session_state.profiles],
-                    columns=['Company', 'Profile URL']
-                )
-                st.dataframe(
-                    profiles_df,
-                    column_config={
-                        "Company": st.column_config.TextColumn("Company", width="medium"),
-                        "Profile URL": st.column_config.LinkColumn("Profile URL", width="large")
-                    },
-                    hide_index=True,
-                    height=300  # Fixed height for scrollable view
-                )
-                
-                # Single download button for HR profiles CSV with company name
-                profiles_df = pd.DataFrame(
-                    [[st.session_state.selected_company, profile] for profile in st.session_state.profiles],
-                    columns=['Company', 'Profile URL']
-                )
-                csv_buffer = io.StringIO()
-                profiles_df.to_csv(csv_buffer, index=False)
-                
-                company_name = st.session_state.selected_company.replace(" ", "_").lower()
-                st.download_button(
-                    label="📥 Download HR Profiles as CSV",
-                    data=csv_buffer.getvalue(),
-                    file_name=f"hr_profiles_{company_name}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.csv",
-                    mime="text/csv"
-                )
-                
-        else:
-            st.warning("No HR profiles found.")
-elif st.session_state.companies is not None:
-    st.warning("No companies found.")
-
+# Remove the following section and continue with the next tab
 with search_mode[2]:
     st.subheader("📦 Batch Process Companies")
     
@@ -337,39 +273,72 @@ with search_mode[3]:
 # Add Company Insights
 with search_mode[4]:
     st.subheader("🏢 Company Insights")
+    if st.session_state.selected_company:
+        insights = get_company_insights(st.session_state.selected_company)
+        if 'error' not in insights:
+            st.markdown(f"### {st.session_state.selected_company} Insights")
+            st.markdown("#### Company Overview")
+            st.markdown(f"**Industry:** {insights['Company Overview'].get('Industry', 'N/A')}")
+            st.markdown(f"**Size:** {insights['Company Overview'].get('Size', 'N/A')}")
+            st.markdown(f"**Founded:** {insights['Company Overview'].get('Founding Year', 'N/A')}")
+            st.markdown(f"**Headquarters:** {insights['Company Overview'].get('Headquarters', 'N/A')}")
+            st.markdown("#### Key Products/Services")
+            st.markdown(f"{insights.get('Key Products/Services', 'N/A')}")
+            st.markdown("#### Employee Distribution")
+            st.markdown(f"{insights.get('Employee Distribution', 'N/A')}")
+            st.markdown("#### Recent Growth Metrics")
+            st.markdown(f"{insights.get('Recent Growth Metrics', 'N/A')}")
+            st.markdown("#### Key Achievements and Market Position")
+            st.markdown(f"{insights.get('Key Achievements and Market Position', 'N/A')}")
+        else:
+            st.error(f"Error fetching insights: {insights['error']}")
+    else:
+        st.warning("Please select a company first.")
     
     company_search = st.text_input("Enter Company Name for Insights")
     if company_search and st.button("Get Insights"):
-        with st.spinner("Gathering company insights..."):
-            # Create tabs for different insight categories
-            insight_tabs = st.tabs(["Overview", "Employee Distribution", "Growth Metrics"])
+        with st.spinner("🔍 Gathering real-time company insights..."):
+            insights = get_company_insights(company_search)
             
-            with insight_tabs[0]:
-                st.markdown(f"""
-                ### {company_search} Overview
-                - **Industry**: Technology
-                - **Company Size**: 1000-5000 employees
-                - **Founded**: 2010
-                - **Headquarters**: San Francisco, CA
-                """)
-            
-            with insight_tabs[1]:
-                # Sample employee distribution chart
-                data = {
-                    'Department': ['Engineering', 'Sales', 'Marketing', 'HR', 'Others'],
-                    'Count': [45, 20, 15, 10, 10]
-                }
-                chart_data = pd.DataFrame(data)
-                st.bar_chart(chart_data.set_index('Department'))
-            
-            with insight_tabs[2]:
-                # Sample growth metrics
-                growth_data = {
-                    'Year': [2019, 2020, 2021, 2022],
-                    'Employees': [100, 250, 500, 1000]
-                }
-                growth_df = pd.DataFrame(growth_data)
-                st.line_chart(growth_df.set_index('Year'))
+            if "error" not in insights:
+                # Create tabs for different insight categories
+                insight_tabs = st.tabs(["Overview", "Products & Services", "Employee Distribution", "Growth & Achievements"])
+                
+                with insight_tabs[0]:
+                    st.markdown(f"""
+                    ### {company_search} Overview
+                    - **Industry**: {insights['Company Overview']['Industry']}
+                    - **Company Size**: {insights['Company Overview']['Size']}
+                    - **Founded**: {insights['Company Overview']['Founding Year']}
+                    - **Headquarters**: {insights['Company Overview']['Headquarters']}
+                    """)
+                
+                with insight_tabs[1]:
+                    st.markdown("### Key Products/Services")
+                    st.markdown(f"- {insights['Key Products/Services']}")
+                
+                with insight_tabs[2]:
+                    # Employee distribution markdown
+                    st.markdown("#### Employee Distribution")
+                    st.markdown(f"- {insights['Employee Distribution']}")
+                
+                with insight_tabs[3]:
+                    col1, col2 = st.columns(2)
+                    with col1:
+                        st.markdown("#### Recent Growth Metrics")
+                        if 'Recent Growth Metrics' in insights:
+                            st.markdown(f"- {insights['Recent Growth Metrics']}")
+                        else:
+                            st.markdown("- N/A")
+                    
+                    with col2:
+                        st.markdown("### Key Achievements")
+                        if 'Key Achievements and Market Position' in insights:
+                            st.markdown(f"- {insights['Key Achievements and Market Position']}")
+                        else:
+                            st.markdown("- N/A")
+            else:
+                st.error(f"Error: {insights['error']}")
 
 # Add Search Templates
 with search_mode[5]:
@@ -384,7 +353,7 @@ with search_mode[5]:
             template_location = st.text_input("Default Location")
         with col2:
             template_domain = st.text_input("Default Domain")
-            template_num_profiles = st.number_input("Default Number of Profiles", 1, 30, 10)
+            template_num_profiles = st.number_input("Default Number of Profiles", 1, 30, 10, key="template_num")
         
         if st.button("Save Template"):
             if template_name:
