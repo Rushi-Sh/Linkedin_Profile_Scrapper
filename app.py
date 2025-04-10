@@ -6,6 +6,7 @@ from datetime import datetime
 import os
 import pandas as pd
 from io import StringIO  # Add this import
+import io
 
 from companies_details_extraction.company_scraper import get_linkedin_company_links, extract_company_name_from_url
 from companies_details_extraction.hr_scraper import get_hr_profiles
@@ -70,6 +71,97 @@ with search_mode[0]:
             company_links = get_linkedin_company_links(location, domain, num_companies)
             st.session_state.companies = {extract_company_name_from_url(link): link for link in company_links}
             st.session_state.designation = designation
+            
+    # Display companies if they exist in session state
+    if st.session_state.companies:
+        st.success(f"🎯 Found {len(st.session_state.companies)} companies")
+        
+        # Add a divider
+        st.markdown("<div class='section-divider'></div>", unsafe_allow_html=True)
+        
+        # Companies display as DataFrame
+        st.subheader("📋 Found Companies")
+        if st.session_state.companies:
+            csv_buffer = StringIO()
+            companies_df = pd.DataFrame(
+                [[name, url] for name, url in st.session_state.companies.items()],
+                columns=['Company Name', 'LinkedIn URL']
+            )
+            companies_df.to_csv(csv_buffer, index=False)
+            st.download_button(
+                label="📥 Download Company URLs as CSV",
+                data=csv_buffer.getvalue(),
+                file_name=f"company_urls_{datetime.now().strftime('%Y%m%d_%H%M%S')}.csv",
+                mime="text/csv"
+            )
+        st.dataframe(
+            companies_df,
+            column_config={
+                "Company Name": st.column_config.TextColumn("Company Name", width="medium"),
+                "LinkedIn URL": st.column_config.LinkColumn("LinkedIn URL", width="large")
+            },
+            hide_index=True,
+            height=300
+        )
+            
+    # Display company selection after search
+    if st.session_state.companies:
+        st.markdown("### 🎯 Select Companies")
+        # Create a multiselect for company selection
+        selected_companies = st.multiselect(
+            "Choose companies to find HR profiles:",
+            options=list(st.session_state.companies.keys()),
+            default=list(st.session_state.companies.keys())[:5]  # Default select first 5 companies
+        )
+        
+        profiles_per_company = st.number_input("👥 Profiles per Company", min_value=1, max_value=30, value=5)
+        
+        if selected_companies and st.button("Find HR Profiles"):
+            # Create a container for results
+            results_container = st.container()
+            
+            with st.spinner("🔍 Finding HR profiles for selected companies..."):
+                all_profiles = {}
+                progress_bar = st.progress(0)
+                
+                for idx, company in enumerate(selected_companies):
+                    profiles = get_hr_profiles(company, profiles_per_company, st.session_state.designation)
+                    all_profiles[company] = profiles
+                    progress_bar.progress((idx + 1) / len(selected_companies))
+                
+                # Display results in the container
+                with results_container:
+                    st.success(f"✨ Found HR profiles for {len(selected_companies)} companies")
+                    
+                    # Create DataFrame for display
+                    results_data = []
+                    for company, profiles in all_profiles.items():
+                        for profile in profiles:
+                            results_data.append([company, profile])
+                    
+                    if results_data:
+                        results_df = pd.DataFrame(results_data, columns=['Company', 'Profile URL'])
+                        st.dataframe(
+                            results_df,
+                            column_config={
+                                "Company": st.column_config.TextColumn("Company", width="medium"),
+                                "Profile URL": st.column_config.LinkColumn("Profile URL", width="large")
+                            },
+                            hide_index=True,
+                            height=400
+                        )
+                        
+                        # Add download button
+                        csv_buffer = StringIO()
+                        results_df.to_csv(csv_buffer, index=False)
+                        st.download_button(
+                            label="📥 Download HR Profiles as CSV",
+                            data=csv_buffer.getvalue(),
+                            file_name=f"hr_profiles_{datetime.now().strftime('%Y%m%d_%H%M%S')}.csv",
+                            mime="text/csv"
+                        )
+                    else:
+                        st.warning("No HR profiles found for the selected companies.")
 
 with search_mode[1]:
     # Direct company search
@@ -143,28 +235,7 @@ st.markdown("""
     </style>
 """, unsafe_allow_html=True)
 
-# Display companies if they exist in session state
-if st.session_state.companies:
-    st.success(f"🎯 Found {len(st.session_state.companies)} companies")
-    
-    # Add a divider
-    st.markdown("<div class='section-divider'></div>", unsafe_allow_html=True)
-    
-    # Companies display as DataFrame
-    st.subheader("📋 Found Companies")
-    companies_df = pd.DataFrame(
-        [[name, url] for name, url in st.session_state.companies.items()],
-        columns=['Company Name', 'LinkedIn URL']
-    )
-    st.dataframe(
-        companies_df,
-        column_config={
-            "Company Name": st.column_config.TextColumn("Company Name", width="medium"),
-            "LinkedIn URL": st.column_config.LinkColumn("LinkedIn URL", width="large")
-        },
-        hide_index=True,
-        height=300
-    )
+
     
    
 
@@ -381,3 +452,5 @@ with search_mode[5]:
             st.session_state.domain = template['domain']
             st.session_state.num_profiles = template['num_profiles']
             st.success("Template applied! Switch to search tab to continue.")
+
+    
