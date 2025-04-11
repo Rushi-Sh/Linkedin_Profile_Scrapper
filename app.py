@@ -39,7 +39,7 @@ if 'form_state' not in st.session_state:
     }
 
 st.set_page_config(page_title="LinkedIn HR Scraper", layout="centered")
-st.title("👥 LinkedIn HR Profile Scraper")
+st.title("HIRVANA prototype")
 
 # Single tab navigation
 search_mode = st.tabs([
